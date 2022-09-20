@@ -38,6 +38,10 @@ set colorcolumn=120
 highlight ColorColumn ctermbg=0 guibg=lightgrey
 
 
+"If I'm in HTML it's 100% Django...
+au BufNewFile,BufRead *.html set filetype=htmldjango
+
+
 
 call plug#begin('~/.vim/plugged')
 
@@ -49,11 +53,13 @@ Plug 'nvim-treesitter/nvim-treesitter'
 
 "nvim-lsp stuff
 Plug 'neovim/nvim-lspconfig'
-Plug 'tjdevries/lsp_extensions.nvim'
 Plug 'hrsh7th/cmp-nvim-lsp'
 Plug 'hrsh7th/nvim-cmp'
 Plug 'hrsh7th/cmp-vsnip'
 Plug 'hrsh7th/vim-vsnip'
+Plug 'hrsh7th/cmp-cmdline'
+Plug 'ray-x/lsp_signature.nvim'
+Plug 'rafamadriz/friendly-snippets'
 
 "Telescope
 Plug 'nvim-lua/popup.nvim'
@@ -165,7 +171,13 @@ fun! TrimWhitespace()
     call winrestview(l:save)
 endfun
 
-set completeopt=menuone,noinsert,noselect
+
+"LSP/nvim-cmp
+let g:vsnip_filetypes = {}
+let g:vsnip_filetypes.htmldjango = ['djangohtml', 'html']
+let g:vsnip_filetypes.python = ['django']
+
+set completeopt=menu,menuone,noselect
 let g:completion_matching_strategy_list = ['exact', 'substring', 'fuzzy']
 
 lua <<EOF
@@ -173,39 +185,50 @@ lua <<EOF
 local cmp = require'cmp'
 
 cmp.setup({
-snippet = {
-    -- REQUIRED - you must specify a snippet engine
-    expand = function(args)
-    vim.fn["vsnip#anonymous"](args.body) -- For `vsnip` users.
-    -- require('luasnip').lsp_expand(args.body) -- For `luasnip` users.
-    -- vim.fn["UltiSnips#Anon"](args.body) -- For `ultisnips` users.
-    -- require'snippy'.expand_snippet(args.body) -- For `snippy` users.
-end,
-},
-    mapping = {
-        ['<C-d>'] = cmp.mapping(cmp.mapping.scroll_docs(-4), { 'i', 'c' }),
-        ['<C-f>'] = cmp.mapping(cmp.mapping.scroll_docs(4), { 'i', 'c' }),
-        ['<C-Space>'] = cmp.mapping(cmp.mapping.complete(), { 'i', 'c' }),
-        ['<C-y>'] = cmp.config.disable, -- Specify `cmp.config.disable` if you want to remove the default `<C-y>` mapping.
-        ['<C-e>'] = cmp.mapping({
-        i = cmp.mapping.abort(),
-        c = cmp.mapping.close(),
-        }),
-    ['<CR>'] = cmp.mapping.confirm({ select = true }),
+    snippet = {
+        -- REQUIRED - you must specify a snippet engine
+        expand = function(args)
+        vim.fn["vsnip#anonymous"](args.body) -- For `vsnip` users.
+        end,
     },
-sources = cmp.config.sources({
-{ name = 'nvim_lsp' },
-{ name = 'vsnip' }, -- For vsnip users.
--- { name = 'luasnip' }, -- For luasnip users.
--- { name = 'ultisnips' }, -- For ultisnips users.
--- { name = 'snippy' }, -- For snippy users.
-}, {
-{ name = 'buffer' },
+    window = {
+        },
+    mapping = cmp.mapping.preset.insert({
+        ['<C-f>'] = cmp.mapping.scroll_docs(-4),
+        ['<C-F>'] = cmp.mapping.scroll_docs(4),
+        ['<C-n>'] = cmp.mapping(cmp.mapping.select_next_item(), { 'i', 'c'}),
+        ['<C-p>'] = cmp.mapping(cmp.mapping.select_prev_item(), { 'i', 'c'}),
+        ['<Tab>'] = cmp.mapping(function(fallback)
+            if cmp.visible() then
+                cmp.select_next_item()
+            else
+                fallback()
+            end
+        end, {"i", "c"}), 
+        ['<S-Tab>'] = cmp.mapping(function(fallback)
+            if cmp.visible() then
+                cmp.select_prev_item()
+            else
+                fallback()
+            end
+        end, {"i", "c"}), 
+        ['<C-Space>'] = cmp.mapping.complete(),
+        --['<C-y>'] = cmp.config.disable, -- Specify `cmp.config.disable` if you want to remove the default `<C-y>` mapping.
+        ['<C-e>'] = cmp.mapping.abort(),
+    ['<CR>'] = cmp.mapping.confirm({ select = true, behavior = cmp.ConfirmBehavior.Replace }),
+    }),
+    sources = cmp.config.sources({
+        { name = 'nvim_lsp' },
+        { name = 'vsnip' }, -- For vsnip users.
+        { name = 'nvim_lsp_signature_help'},
+        }, {
+        { name = 'buffer' },
+        })
 })
-  })
 
   -- Use buffer source for `/` (if you enabled `native_menu`, this won't work anymore).
   cmp.setup.cmdline('/', {
+      mapping = cmp.mapping.preset.cmdline(),
       sources = {
           { name = 'buffer' }
           }
@@ -213,12 +236,15 @@ sources = cmp.config.sources({
 
   -- Use cmdline & path source for ':' (if you enabled `native_menu`, this won't work anymore).
   cmp.setup.cmdline(':', {
+      mapping = cmp.mapping.preset.cmdline(),
       sources = cmp.config.sources({
       { name = 'path' }
       }, {
       { name = 'cmdline' }
       })
   })
+
+    require("lsp_signature").setup(signature_config)
 
   -- Setup lspconfig.
   local servers = { 'clangd', 'rust_analyzer', 'pylsp', 'tsserver', 'gdscript' }
